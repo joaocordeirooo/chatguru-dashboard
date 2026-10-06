@@ -1,0 +1,12 @@
+{
+  "name": "chatguru-dashboard",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "test": "npm test --workspace backend"
+  }
+}
