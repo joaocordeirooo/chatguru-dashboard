@@ -14,6 +14,13 @@ export const env = z
     JWT_SECRET: z.string().min(32),
     DATABASE_URL: z.string().optional(),
     AUTH_DATABASE_URL: z.string().optional(),
+    SOURCE_WRITE_DATABASE_URL: z.string().optional(),
+    ARCHIVE_ENCRYPTION_KEY: z
+      .string()
+      .regex(/^[a-fA-F0-9]{64}$/)
+      .optional(),
+    OPENAI_API_KEY: z.string().optional(),
+    OPENAI_MODEL: z.string().min(1).max(100).default("gpt-5-nano"),
     DATABASE_SSL: z.enum(["true", "false"]).default("false"),
     AUTH_DATABASE_SSL: z.enum(["true", "false"]).default("false"),
     OUTGOING_DIRECTION: z.string().default("saida"),

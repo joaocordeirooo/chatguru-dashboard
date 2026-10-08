@@ -18,6 +18,26 @@ test("authentication, ownership and admin boundaries", async () => {
   assert.equal(login.body.password_hash, undefined);
   assert.match(login.headers["set-cookie"][0], /HttpOnly/);
   assert.equal((await agent.get("/api/users")).status, 403);
+  assert.equal((await agent.get("/api/intelligence/metrics")).status, 403);
+  assert.equal(
+    (
+      await agent
+        .post("/api/intelligence/imports/commit")
+        .set("Origin", origin)
+        .set("Content-Type", "text/csv")
+        .send("invalid csv")
+    ).status,
+    403,
+  );
+  assert.equal(
+    (
+      await agent
+        .post("/api/intelligence/analyze")
+        .set("Origin", origin)
+        .send({})
+    ).status,
+    403,
+  );
   assert.equal(
     (
       await agent.post("/api/users").set("Origin", origin).send({

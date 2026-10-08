@@ -5,6 +5,8 @@ import { login, logout } from "../controllers/auth.js";
 import { dashboard } from "../controllers/dashboard.js";
 import * as users from "../controllers/users.js";
 import { publicUser } from "../services/users.js";
+import express from "express";
+import * as intelligence from "../controllers/intelligence.js";
 export const routes = Router();
 routes.post(
   "/auth/login",
@@ -23,3 +25,37 @@ routes.get("/dashboard", dashboard);
 routes.get("/users", admin, users.list);
 routes.post("/users", admin, users.create);
 routes.patch("/users/:id", admin, users.update);
+routes.get("/intelligence/config", admin, intelligence.config);
+routes.get("/intelligence/metrics", admin, intelligence.overview);
+routes.get("/intelligence/imports", admin, intelligence.history);
+const importLimit = rateLimit({
+  windowMs: 60000,
+  limit: 10,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+});
+routes.post(
+  "/intelligence/imports/preview",
+  admin,
+  importLimit,
+  express.raw({ type: "text/csv", limit: "15mb" }),
+  intelligence.preview,
+);
+routes.post(
+  "/intelligence/imports/commit",
+  admin,
+  importLimit,
+  express.raw({ type: "text/csv", limit: "15mb" }),
+  intelligence.commit,
+);
+routes.post(
+  "/intelligence/analyze",
+  admin,
+  rateLimit({
+    windowMs: 60000,
+    limit: 3,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+  }),
+  intelligence.analysis,
+);

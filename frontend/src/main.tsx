@@ -12,6 +12,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import "./style.css";
+import { Intelligence } from "./Intelligence";
 type User = {
   id: string;
   name: string;
@@ -58,7 +59,14 @@ async function api(path: string, options: RequestInit = {}) {
     headers: { "Content-Type": "application/json", ...options.headers },
   });
   if (r.status === 204) return null;
-  const value = await r.json();
+  const value = await r
+    .json()
+    .catch(() => ({
+      error:
+        r.status === 413
+          ? "Arquivo acima do limite de upload."
+          : "Falha de conexão com o backend. Tente novamente.",
+    }));
   if (!r.ok) throw new Error(value.error || "Erro de conexão");
   return value;
 }
@@ -67,6 +75,7 @@ function App() {
   const [ready, setReady] = useState(false);
   const [error, setError] = useState("");
   const [view, setView] = useState("dashboard");
+  const [revision, setRevision] = useState(0);
   const [report, setReport] = useState<Report | null>(null);
   const [employees, setEmployees] = useState<User[]>([]);
   const [group, setGroup] = useState("employee");
@@ -130,6 +139,7 @@ function App() {
     author,
     messageType,
     status,
+    revision,
   ]);
   async function loadUsers() {
     try {
@@ -220,6 +230,15 @@ function App() {
         </button>
         {user.role === "admin" && (
           <button
+            className={view === "intelligence" ? "nav active" : "nav"}
+            onClick={() => setView("intelligence")}
+          >
+            <MessagesSquare size={19} />
+            IA e importações
+          </button>
+        )}
+        {user.role === "admin" && (
+          <button
             className={view === "users" ? "nav active" : "nav"}
             onClick={() => {
               setView("users");
@@ -268,7 +287,11 @@ function App() {
         <header>
           <div className="breadcrumb">
             Workspace <ChevronRight size={14} />{" "}
-            {view === "dashboard" ? "Visão geral" : "Funcionários"}
+            {view === "dashboard"
+              ? "Visão geral"
+              : view === "intelligence"
+                ? "IA e importações"
+                : "Funcionários"}
           </div>
           <span className="badge">
             ChatGuru • {report?.demo ? "Demonstração" : "Dashboard"}
@@ -283,12 +306,16 @@ function App() {
               <h1>
                 {view === "dashboard"
                   ? "Visão geral das mensagens"
-                  : "Gestão de funcionários"}
+                  : view === "intelligence"
+                    ? "Inteligência gerencial"
+                    : "Gestão de funcionários"}
               </h1>
               <p>
                 {view === "dashboard"
                   ? "Clareza sobre seus atendimentos. Controle sobre cada envio."
-                  : "Cadastre a equipe e controle os acessos ao painel."}
+                  : view === "intelligence"
+                    ? "Seus dois números, um panorama completo das mensagens."
+                    : "Cadastre a equipe e controle os acessos ao painel."}
               </p>
             </div>
             <span className="tariff">
@@ -303,7 +330,12 @@ function App() {
               {error}
             </p>
           )}
-          {view === "users" ? (
+          {view === "intelligence" && user.role === "admin" ? (
+            <Intelligence
+              api={api}
+              onImported={() => setRevision((n) => n + 1)}
+            />
+          ) : view === "users" ? (
             <>
               <form
                 className="create-user panel"
