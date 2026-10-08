@@ -8,6 +8,7 @@ import {
 import { env } from "../config/env.js";
 import { analyze, metrics } from "../services/intelligence.js";
 import { fail } from "../services/errors.js";
+import { categories, pricing } from "../services/pricing.js";
 const day = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -16,7 +17,7 @@ const day = z
       Number.isFinite(Date.parse(s)) &&
       new Date(s).toISOString().slice(0, 10) === s,
   );
-const period = z
+export const period = z
   .object({ from: day, to: day, channel: z.enum(["2998", "0061"]).optional() })
   .strict()
   .refine(
@@ -36,14 +37,18 @@ export function config(_req: Request, res: Response) {
     model: env.OPENAI_MODEL,
     importConfigured: !env.DEMO_MODE && Boolean(env.ARCHIVE_ENCRYPTION_KEY),
     demo: env.DEMO_MODE,
+    pricing,
   });
 }
 export async function preview(req: Request, res: Response) {
-  const { channel } = z
-    .object({ channel: z.enum(["2998", "0061"]) })
+  const { channel, category } = z
+    .object({
+      channel: z.enum(["2998", "0061"]),
+      category: z.enum(categories).default("unclassified"),
+    })
     .strict()
     .parse(req.query);
-  res.json(await previewImport(file(req), channel, req.user.id));
+  res.json(await previewImport(file(req), channel, req.user.id, category));
 }
 export async function commit(req: Request, res: Response) {
   const q = z
@@ -55,11 +60,19 @@ export async function commit(req: Request, res: Response) {
         .max(180)
         .regex(/^[^\\/\r\n\0]+\.csv$/i),
       token: z.string().max(1000),
+      category: z.enum(categories).default("unclassified"),
     })
     .strict()
     .parse(req.query);
   res.json(
-    await commitImport(file(req), q.channel, q.filename, q.token, req.user.id),
+    await commitImport(
+      file(req),
+      q.channel,
+      q.filename,
+      q.token,
+      req.user.id,
+      q.category,
+    ),
   );
 }
 export async function history(_req: Request, res: Response) {

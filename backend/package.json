@@ -7,7 +7,7 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "test": "tsc -p tsconfig.test.json && node --test .test-dist/tests/*.test.js",
+    "test": "tsc -p tsconfig.test.json && node --v8-pool-size=1 --test --test-concurrency=1 .test-dist/tests/*.test.js",
     "migrate": "tsx src/migrate.ts"
   },
   "dependencies": {

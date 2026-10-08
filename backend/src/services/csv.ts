@@ -1,6 +1,7 @@
 import { parse } from "csv-parse/sync";
 import { createHash, createCipheriv, randomBytes } from "node:crypto";
 import { fail } from "./errors.js";
+import { estimate, type BillingCategory } from "./pricing.js";
 export const headers = [
   "Autor",
   "Chat",
@@ -15,7 +16,7 @@ export const headers = [
 ];
 const sha = (text: string | Buffer) =>
   createHash("sha256").update(text).digest("hex");
-function date(value: string, row: number) {
+export function csvDate(value: string, row: number) {
   if (!value) return null;
   const m = /^(\d{2})-(\d{2})-(\d{4}) (\d{2}):(\d{2}):(\d{2})$/.exec(value);
   if (!m) fail(400, `Linha ${row}: data inválida; use DD-MM-AAAA HH:mm:ss.`);
@@ -40,7 +41,11 @@ export function archive(value: string, key: string) {
   ]);
   return `enc:v1:${iv.toString("base64")}:${cipher.getAuthTag().toString("base64")}:${encrypted.toString("base64")}`;
 }
-export function parseHistory(buffer: Buffer, channel: string) {
+export function parseHistory(
+  buffer: Buffer,
+  channel: string,
+  billingCategory: BillingCategory = "unclassified",
+) {
   if (!["2998", "0061"].includes(channel))
     fail(400, "Selecione o canal 2998 ou 0061.");
   let text: string;
@@ -97,8 +102,8 @@ export function parseHistory(buffer: Buffer, channel: string) {
       !["Enviada", "Erro"].includes(status)
     )
       fail(400, `Linha ${index + 2}: Chat_ID, autor, tipo ou status inválido.`);
-    const createdAt = date(created, index + 2),
-      sentAt = date(sent, index + 2);
+    const createdAt = csvDate(created, index + 2),
+      sentAt = csvDate(sent, index + 2);
     if (status === "Enviada" && !sentAt)
       fail(400, `Linha ${index + 2}: mensagem enviada sem data de envio.`);
     if (!sentAt && !createdAt)
@@ -144,6 +149,7 @@ export function parseHistory(buffer: Buffer, channel: string) {
       message,
       link,
       day: (sentAt ?? createdAt)!.slice(0, 10),
+      billingCategory,
     };
   });
   const days = records.map((r) => r.day).sort();
@@ -158,7 +164,11 @@ export function parseHistory(buffer: Buffer, channel: string) {
       errors: records.filter((r) => r.status === "erro").length,
       from: days[0],
       to: days.at(-1)!,
-      costMillis: records.filter((r) => r.status === "enviada").length * 35,
+      billingCategory,
+      ...estimate(
+        records.filter((r) => r.status === "enviada").length,
+        billingCategory,
+      ),
     },
   };
 }

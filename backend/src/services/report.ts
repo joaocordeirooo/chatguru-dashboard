@@ -1,6 +1,7 @@
 import { source } from "../config/db.js";
 import { env } from "../config/env.js";
 import type { User } from "./users.js";
+import { pricing, costCounts, priced } from "./pricing.js";
 export type Filters = {
   from: string;
   to: string;
@@ -109,7 +110,18 @@ export function aggregateDemo(user: User, f: Filters) {
   return {
     demo: true,
     dataSource: f.dataSource ?? "history",
-    unitCostMillis: 35,
+    pricing,
+    categories: [
+      {
+        category: "unclassified",
+        sent: n,
+        records: records.length,
+        costUnits: n * 350,
+        costMillis: n * 35,
+        unpriced: 0,
+        unclassified: n,
+      },
+    ],
     totals: {
       sent: n,
       received: records.filter((r) => r.direction === env.RECEIVED_DIRECTION)
@@ -120,8 +132,10 @@ export function aggregateDemo(user: User, f: Filters) {
       employees: new Set(records.filter(sent).map((r) => r.employeeId)).size,
       costMillis: centsMilli(n),
     },
-    daily: [...days.values()].sort((a, b) => a.day.localeCompare(b.day)),
-    types: [...types.values()],
+    daily: [...days.values()]
+      .sort((a, b) => a.day.localeCompare(b.day))
+      .map((r) => ({ ...r, costMillis: r.sent * 35 })),
+    types: [...types.values()].map((r) => ({ ...r, costMillis: r.sent * 35 })),
     statuses: [...statuses].map(([status, records]) => ({ status, records })),
     rows: rows.slice((f.page - 1) * 20, f.page * 20),
     total: rows.length,
@@ -133,8 +147,8 @@ export function buildReportQuery(user: User, f: Filters) {
   const schema = '"' + env.SOURCE_SCHEMA + '"',
     history = f.dataSource !== "workflow";
   const events = history
-    ? `SELECT h.autor AS employee_id,COALESCE(h.autor,'Sem autor') AS employee,NULL::text AS email,h.canal||':'||h.chat_id AS client_id,COALESCE(h.contato_nome,'Cliente sem nome') AS client,h.canal||':'||h.chat_id AS conversation,h.canal AS channel,COALESCE(h.enviado_em,h.criado_em_origem) AS occurred_at,h.tipo AS type,h.status,'saida'::text AS direction FROM ${schema}.historico_chatguru h`
-    : `SELECT COALESCE(lower(c.responsavel_email),'sem-responsavel') AS employee_id,COALESCE(c.responsavel_nome,'Sem responsável') AS employee,lower(c.responsavel_email) AS email,ct.id::text AS client_id,COALESCE(ct.nome,'Cliente #'||ct.id::text) AS client,c.id::text AS conversation,c.phone_id AS channel,COALESCE(m.data_origem,m.registrado_em) AS occurred_at,m.tipo AS type,m.status,m.direcao AS direction FROM ${schema}.mensagens m JOIN ${schema}.conversas c ON c.id=m.conversa_id JOIN ${schema}.contatos ct ON ct.id=c.contato_id`;
+    ? `SELECT h.autor AS employee_id,COALESCE(h.autor,'Sem autor') AS employee,NULL::text AS email,h.canal||':'||h.chat_id AS client_id,COALESCE(h.contato_nome,'Cliente sem nome') AS client,h.canal||':'||h.chat_id AS conversation,h.canal AS channel,COALESCE(h.enviado_em,h.criado_em_origem) AS occurred_at,h.tipo AS type,h.status,COALESCE(to_jsonb(h)->>'billing_category','unclassified') AS billing_category,'saida'::text AS direction FROM ${schema}.historico_chatguru h`
+    : `SELECT COALESCE(lower(c.responsavel_email),'sem-responsavel') AS employee_id,COALESCE(c.responsavel_nome,'Sem responsável') AS employee,lower(c.responsavel_email) AS email,ct.id::text AS client_id,COALESCE(ct.nome,'Cliente #'||ct.id::text) AS client,c.id::text AS conversation,c.phone_id AS channel,COALESCE(m.data_origem,m.registrado_em) AS occurred_at,m.tipo AS type,m.status,'unclassified'::text AS billing_category,m.direcao AS direction FROM ${schema}.mensagens m JOIN ${schema}.conversas c ON c.id=m.conversa_id JOIN ${schema}.contatos ct ON ct.id=c.contato_id`;
   const base = `WITH events AS (${events}), filtered AS (SELECT * FROM events WHERE occurred_at>=($1::date::timestamp AT TIME ZONE 'America/Sao_Paulo') AND occurred_at<(($2::date+1)::timestamp AT TIME ZONE 'America/Sao_Paulo') AND ($3::boolean OR ${history ? "employee_id=$4" : "email=$4"}) AND ($5::text IS NULL OR channel=$5) AND ($6::text IS NULL OR employee=$6) AND ($7::text IS NULL OR type=$7) AND ($8::text IS NULL OR status=$8))`;
   return {
     base,
@@ -157,7 +171,8 @@ export async function report(user: User, f: Filters) {
   if (env.DEMO_MODE) return aggregateDemo(user, f);
   const { base, params } = buildReportQuery(user, f);
   const counts =
-    "COUNT(*) FILTER(WHERE direction=$9 AND status=ANY($10::text[]))::int AS sent,COUNT(*) FILTER(WHERE direction=$11)::int AS received,COUNT(*) FILTER(WHERE status='erro')::int AS errors,COUNT(*)::int AS records";
+    "COUNT(*) FILTER(WHERE direction=$9 AND status=ANY($10::text[]))::int AS sent,COUNT(*) FILTER(WHERE direction=$11)::int AS received,COUNT(*) FILTER(WHERE status='erro')::int AS errors,COUNT(*)::int AS records," +
+    costCounts("billing_category", "direction=$9 AND status=ANY($10::text[])");
   const group =
       f.group === "employee"
         ? "employee_id"
@@ -207,16 +222,22 @@ export async function report(user: User, f: Filters) {
         params,
       )
     ).rows[0].total;
+    const categories = await db.query(
+      base +
+        ` SELECT billing_category AS category,${counts} FROM filtered GROUP BY 1 ORDER BY 1`,
+      params,
+    );
     await db.query("COMMIT");
     return {
       demo: false,
       dataSource: f.dataSource ?? "history",
-      unitCostMillis: 35,
-      totals: { ...totals, costMillis: centsMilli(totals.sent) },
-      daily: daily.rows,
-      types: types.rows,
+      pricing,
+      totals: priced(totals),
+      categories: categories.rows.map(priced),
+      daily: daily.rows.map(priced),
+      types: types.rows.map(priced),
       statuses: statuses.rows,
-      rows: groups.rows.map((r) => ({ ...r, costMillis: centsMilli(r.sent) })),
+      rows: groups.rows.map(priced),
       total,
       page: f.page,
       accessNotice:

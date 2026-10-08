@@ -19,6 +19,22 @@ test("authentication, ownership and admin boundaries", async () => {
   assert.match(login.headers["set-cookie"][0], /HttpOnly/);
   assert.equal((await agent.get("/api/users")).status, 403);
   assert.equal((await agent.get("/api/intelligence/metrics")).status, 403);
+  assert.equal((await agent.get("/api/billing")).status, 403);
+  assert.equal(
+    (await agent.put("/api/billing/rules").set("Origin", origin).send({}))
+      .status,
+    403,
+  );
+  assert.equal(
+    (
+      await agent
+        .post("/api/billing/dialogues/commit")
+        .set("Origin", origin)
+        .set("Content-Type", "text/csv")
+        .send("invalid")
+    ).status,
+    403,
+  );
   assert.equal(
     (
       await agent

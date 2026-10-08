@@ -47,6 +47,7 @@ export function Intelligence({
     [loading, setLoading] = useState(false),
     [revision, setRevision] = useState(0);
   const [fileVersion, setFileVersion] = useState(0);
+  const [billingCategory, setBillingCategory] = useState("unclassified");
   useEffect(() => {
     api("/intelligence/config")
       .then(setConfig)
@@ -98,6 +99,7 @@ export function Intelligence({
     try {
       const q = new URLSearchParams({
         channel: uploadChannel,
+        category: billingCategory,
         ...(commit ? { filename: file.name, token: preview.previewToken } : {}),
       });
       const r = await api(
@@ -171,6 +173,28 @@ export function Intelligence({
         )}
         <div className="import-controls">
           <label>
+            Categoria de todos os envios deste arquivo
+            <select
+              value={billingCategory}
+              disabled={importing}
+              onChange={(e) => {
+                setBillingCategory(e.target.value);
+                setPreview(null);
+                setResult(null);
+              }}
+            >
+              <option value="unclassified">
+                Não identificada / arquivo misto
+              </option>
+              <option value="marketing">Marketing · R$ 0,3217</option>
+              <option value="service">Serviço · referência R$ 0,035</option>
+              <option value="utility">Utilidade · tarifa pendente</option>
+              <option value="authentication">
+                Autenticação · tarifa pendente
+              </option>
+            </select>
+          </label>
+          <label>
             Número de origem
             <select
               value={uploadChannel}
@@ -229,8 +253,12 @@ export function Intelligence({
               <span>{integer(preview.errors)} erros</span>
             </div>
             <p>
-              Custo do arquivo completo: {money(preview.costMillis)}. Registros
-              já existentes não serão somados novamente.
+              Estimativa parcial do arquivo: {money(preview.costMillis)}.
+              {preview.unpriced > 0 &&
+                ` ${integer(preview.unpriced)} envios com tarifa pendente.`}
+              Registros existentes não serão somados novamente. A categoria
+              selecionada será aplicada também aos registros existentes deste
+              arquivo.
             </p>
             <button
               disabled={importing || analyzing}
@@ -245,14 +273,17 @@ export function Intelligence({
           <p role="status" className="import-success">
             Importação concluída para {result.channel}:{" "}
             {integer(result.inserted)} novos registros e{" "}
-            {integer(result.skipped)} já existentes. O histórico anterior foi
-            preservado.
+            {integer(result.skipped)} já existentes.
+            {result.reclassified > 0 &&
+              ` ${integer(result.reclassified)} registros tiveram a categoria atualizada.`}
           </p>
         )}
         <p className="fine-print">
           Mesmo formato de final2998.csv · UTF-8 · até 15 MB / 50.000 linhas.
           Confira o número antes de confirmar: o CSV não identifica o canal
-          remetente.
+          remetente. Se o arquivo misturar categorias, escolha “Não
+          identificada”. Só atribua uma categoria quando ela estiver confirmada
+          para todos os envios.
         </p>
       </div>
       <div className="filters panel intelligence-filters">
@@ -300,6 +331,12 @@ export function Intelligence({
           {snapshot.demo && (
             <p className="notice">Dados fictícios do modo demonstração.</p>
           )}
+          <p className="notice">
+            Marketing: R$ 0,3217 por envio. Categorias não identificadas mantêm
+            a referência provisória de R$ 0,035; utilidade e autenticação
+            aguardam tarifa. Confira a apuração dos diálogos na aba Categorias e
+            custos.
+          </p>
           <div className="intelligence-kpis">
             <div className="panel">
               <p>Enviadas</p>
@@ -309,7 +346,9 @@ export function Intelligence({
             <div className="panel">
               <p>Custo de referência</p>
               <strong>{money(totals.costMillis)}</strong>
-              <small>R$ 0,035 por envio</small>
+              <small>
+                Tarifas por categoria · valores pendentes não incluídos
+              </small>
             </div>
             <div className="panel">
               <p>Erros de envio</p>
@@ -364,7 +403,7 @@ export function Intelligence({
                   analyzing ||
                   importing ||
                   loading ||
-                  !totals.records ||
+                  (!totals.records && !snapshot.dialogues?.totals.executions) ||
                   !config?.aiConfigured ||
                   config?.demo
                 }

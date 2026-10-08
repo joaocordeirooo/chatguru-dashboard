@@ -21,6 +21,9 @@ const { previewImport, commitImport } = await import(
 const { metrics, providerPayload, analyze, requestAnalysis } = await import(
   "../src/services/intelligence.js"
 );
+const { estimate } = await import("../src/services/pricing.js");
+const { previewDialogues, importDialogues, dialogueReport, saveRule } =
+  await import("../src/services/dialogues.js");
 const id = "e7399895-8678-4124-b6d5-8f77597b37fa";
 const row = (
   status = "Enviada",
@@ -47,6 +50,17 @@ const csv = (rows: string[][]) =>
         .join("\r\n"),
   );
 test("CSV validates dates, quoted multiline content and preserves initial-import identity", () => {
+  assert.equal(estimate(449, "marketing").costUnits, 1444433);
+  assert.equal(
+    (estimate(449, "marketing").costMillis / 1000).toFixed(2),
+    "144.44",
+  );
+  assert.equal(estimate(3, "utility").unpriced, 3);
+  assert.equal(
+    parseHistory(csv([row(), row("Erro", "")]), "2998", "marketing").summary
+      .costUnits,
+    3217,
+  );
   const buffer = csv([row(), row("Erro", "")]);
   const parsed = parseHistory(buffer, "2998");
   assert.equal(parsed.summary.sent, 1);
@@ -196,6 +210,81 @@ test("PostgreSQL import is additive, overlapping exports are deduplicated, AI re
       /Autor privado|Cliente privado|mensagem privada|554199999999|sig=123|chat1/,
     ),
   );
+  // Reclassifying the identical file changes costs without duplicating messages.
+  const marketingPreview = await previewImport(buffer, "2998", id, "marketing");
+  await assert.rejects(
+    commitImport(
+      buffer,
+      "2998",
+      "same.csv",
+      marketingPreview.previewToken,
+      id,
+      "utility",
+    ),
+    /Prévia/,
+  );
+  const reclassified = await commitImport(
+    buffer,
+    "2998",
+    "same.csv",
+    marketingPreview.previewToken,
+    id,
+    "marketing",
+  );
+  assert.equal(reclassified.inserted, 0);
+  assert.equal(reclassified.reclassified, 2);
+  const categorized = await metrics(period);
+  assert.equal(categorized.current.totals.sent, 3);
+  assert.equal(categorized.current.totals.costUnits, 3917);
+  assert.equal(
+    categorized.current.categories.find((c) => c.category === "marketing")
+      ?.sent,
+    1,
+  );
+  // Preserve identical occurrences, deduplicate reimports and keep dialogue costs separate.
+  const dialogueCsv = Buffer.from(
+    "Diálogo,Chat,Número,Acionado Por,Data Acionado\nMensagem Inicial,Cliente privado,+554199999999,Autor privado,07-10-2026 10:00:00\nMensagem Inicial,Cliente privado,+554199999999,Autor privado,07-10-2026 10:00:00\nFora de Horário,Cliente privado,+554199999999,Autor privado,07-10-2026 11:00:00",
+  );
+  const dp = await previewDialogues(dialogueCsv, id);
+  assert.equal(dp.identicalRows, 1);
+  await assert.rejects(
+    importDialogues(
+      Buffer.concat([
+        dialogueCsv,
+        Buffer.from("\nMensagem Inicial,C,1,A,07-10-2026 12:00:00"),
+      ]),
+      dp.previewToken,
+      id,
+    ),
+    /Prévia/,
+  );
+  assert.equal(
+    (await importDialogues(dialogueCsv, dp.previewToken, id)).inserted,
+    3,
+  );
+  assert.equal(
+    (await importDialogues(dialogueCsv, dp.previewToken, id)).skipped,
+    3,
+  );
+  const dr = await dialogueReport(period);
+  assert.equal(dr.alternativeSource, true);
+  assert.equal(dr.totals.sent, 2);
+  assert.equal(dr.totals.pendingExecutions, 1);
+  assert.equal(dr.totals.costUnits, 6434);
+  assert.equal(dr.totals.unknownChannelSent, 2);
+  assert.equal(
+    (await dialogueReport({ ...period, channel: "0061" })).totals.executions,
+    0,
+  );
+  assert.equal((await metrics(period)).current.totals.costUnits, 3917);
+  assert.ok(
+    !JSON.stringify(providerPayload(await metrics(period), "costs")).match(
+      /Cliente privado|554199999999|Autor privado/,
+    ),
+  );
+  await saveRule("Fora de Horário", "utility", 1, "0061", id);
+  assert.equal((await dialogueReport(period)).totals.unpriced, 1);
+  assert.equal((await dialogueReport(period)).totals.costUnits, 6434);
   const fetchBefore = globalThis.fetch;
   let calls = 0;
   globalThis.fetch = async (input, init) => {

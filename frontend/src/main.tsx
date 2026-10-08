@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import "./style.css";
 import { Intelligence } from "./Intelligence";
+import { Billing } from "./Billing";
 type User = {
   id: string;
   name: string;
@@ -29,12 +30,27 @@ type Report = {
     sent: number;
     received: number;
     costMillis: number;
+    unpriced?: number;
+    unclassified?: number;
     errors: number;
     records: number;
     chats: number;
     employees: number;
   };
-  types: { type: string; sent: number; errors: number; records: number }[];
+  pricing: any;
+  categories: {
+    category: string;
+    sent: number;
+    costMillis: number;
+    unpriced: number;
+  }[];
+  types: {
+    type: string;
+    sent: number;
+    errors: number;
+    records: number;
+    costMillis: number;
+  }[];
   statuses: { status: string; records: number }[];
   rows: {
     id: string;
@@ -45,7 +61,7 @@ type Report = {
     records: number;
     costMillis: number;
   }[];
-  daily: { day: string; sent: number }[];
+  daily: { day: string; sent: number; costMillis: number }[];
   total: number;
   page: number;
 };
@@ -59,14 +75,12 @@ async function api(path: string, options: RequestInit = {}) {
     headers: { "Content-Type": "application/json", ...options.headers },
   });
   if (r.status === 204) return null;
-  const value = await r
-    .json()
-    .catch(() => ({
-      error:
-        r.status === 413
-          ? "Arquivo acima do limite de upload."
-          : "Falha de conexão com o backend. Tente novamente.",
-    }));
+  const value = await r.json().catch(() => ({
+    error:
+      r.status === 413
+        ? "Arquivo acima do limite de upload."
+        : "Falha de conexão com o backend. Tente novamente.",
+  }));
   if (!r.ok) throw new Error(value.error || "Erro de conexão");
   return value;
 }
@@ -249,6 +263,15 @@ function App() {
             Funcionários
           </button>
         )}
+        {user.role === "admin" && (
+          <button
+            className={view === "billing" ? "nav active" : "nav"}
+            onClick={() => setView("billing")}
+          >
+            <Wallet size={19} />
+            Categorias e custos
+          </button>
+        )}
         <div className="side-bottom">
           <ShieldCheck size={20} />
           <p>
@@ -291,7 +314,9 @@ function App() {
               ? "Visão geral"
               : view === "intelligence"
                 ? "IA e importações"
-                : "Funcionários"}
+                : view === "billing"
+                  ? "Categorias e custos"
+                  : "Funcionários"}
           </div>
           <span className="badge">
             ChatGuru • {report?.demo ? "Demonstração" : "Dashboard"}
@@ -308,20 +333,24 @@ function App() {
                   ? "Visão geral das mensagens"
                   : view === "intelligence"
                     ? "Inteligência gerencial"
-                    : "Gestão de funcionários"}
+                    : view === "billing"
+                      ? "Categorias e custos"
+                      : "Gestão de funcionários"}
               </h1>
               <p>
                 {view === "dashboard"
                   ? "Clareza sobre seus atendimentos. Controle sobre cada envio."
                   : view === "intelligence"
                     ? "Seus dois números, um panorama completo das mensagens."
-                    : "Cadastre a equipe e controle os acessos ao painel."}
+                    : view === "billing"
+                      ? "Tarifas por categoria e vínculos dos diálogos confirmados."
+                      : "Cadastre a equipe e controle os acessos ao painel."}
               </p>
             </div>
             <span className="tariff">
-              Tarifa de referência
+              Marketing · tarifa informada
               <strong>
-                R$ 0,035 <small>/ envio</small>
+                R$ 0,3217 <small>/ mensagem</small>
               </strong>
             </span>
           </div>
@@ -330,7 +359,9 @@ function App() {
               {error}
             </p>
           )}
-          {view === "intelligence" && user.role === "admin" ? (
+          {view === "billing" && user.role === "admin" ? (
+            <Billing api={api} onChanged={() => setRevision((n) => n + 1)} />
+          ) : view === "intelligence" && user.role === "admin" ? (
             <Intelligence
               api={api}
               onImported={() => setRevision((n) => n + 1)}
@@ -667,7 +698,8 @@ function App() {
                       ? currency(report.totals.costMillis)
                       : undefined,
                     icon: <Wallet />,
-                    detail: "Mensagens enviadas × R$ 0,035",
+                    detail:
+                      "Tarifas por categoria; sem categoria usa referência provisória",
                   },
                   {
                     label: "Registros no período",
@@ -752,7 +784,7 @@ function App() {
                           <td>{t.records}</td>
                           <td>{t.sent}</td>
                           <td>{t.errors}</td>
-                          <td>{currency(t.sent * 35)}</td>
+                          <td>{currency(t.costMillis)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -797,7 +829,7 @@ function App() {
                       <tr key={d.day}>
                         <td>{d.day.split("-").reverse().join("/")}</td>
                         <td>{d.sent}</td>
-                        <td>{currency(d.sent * 35)}</td>
+                        <td>{currency(d.costMillis)}</td>
                       </tr>
                     ))}
                   </tbody>

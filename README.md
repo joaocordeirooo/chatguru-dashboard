@@ -1,6 +1,6 @@
 # ChatGuru Dashboard · Darcísio Müller
 
-Protótipo de gestão de mensagens, frontend React/TypeScript e API REST Node.js/TypeScript separados. Tarifa de referência **R$ 0,035 por mensagem enviada**, não uma implementação das regras de faturamento da Meta.
+Protótipo de gestão de mensagens, frontend React/TypeScript e API REST Node.js/TypeScript separados. Custos por categoria: marketing **R$ 0,3217 por envio**, serviço e não identificadas com referência provisória de **R$ 0,035**; utilidade e autenticação com tarifa pendente. Não implementa todas as regras de faturamento da Meta.
 
 ## Executar
 
@@ -88,3 +88,18 @@ Para ativar análises, configure `OPENAI_API_KEY` apenas no backend e `OPENAI_MO
 A análise utiliza somente cálculos do PostgreSQL, nunca SQL gerado pelo modelo. Resultados iguais (mesmo período, dados, objetivo e modelo) são reaproveitados do cache; mudanças nos indicadores geram nova análise. Bloqueios impedem chamadas duplicadas concorrentes. A resposta exibe uso de tokens, sem estimar câmbio ou somar tokens à tarifa WhatsApp. Rate limits, autenticação, origem e autorização de admin também protegem as rotas de importação/IA. As sugestões são hipóteses gerenciais para conferência, sem avaliação de conteúdo ou produtividade individual.
 
 Rotas: GET `/api/intelligence/config`, GET `/metrics`, GET `/imports`, POST `/imports/preview`, POST `/imports/commit` e POST `/analyze` (todas sob `/api/intelligence`). Uploads usam Content-Type text/csv; o arquivo só é enviado ao próprio backend via HTTPS, não à OpenAI. Reimplante os dois serviços para aplicar a nova aba e os limites do nginx. Não rode o antigo script destrutivo novamente para fazer importações diárias.
+
+
+## Categorias e custos
+
+A aba de administração Categorias e custos distingue marketing, serviço, utilidade, autenticação e categoria não identificada. Marketing usa **R$ 0,3217 por envio**, conforme a tarifa informada. Serviço e mensagens não identificadas mantêm **R$ 0,035 como referência provisória**; utilidade e autenticação ficam com tarifa pendente, sem presumir gratuidade. Totais usam unidades inteiras de 1/10.000 de real e arredondamento apenas na exibição. Valores são estimativas, sem conciliação de franquias, entrega ou fatura.
+
+Na importação de mensagens, escolha uma categoria somente quando todos os envios do CSV pertencerem a ela. Arquivos mistos ficam não identificados. Reimportar um CSV com categoria confirmada atualiza a categoria dos registros existentes sem duplicação. A categoria faz parte da prévia assinada; alterá-la exige nova verificação.
+
+O CSV de Diálogos Executados tem importação separada, com verificação e confirmação. A regra inicial Mensagem Inicial corresponde a marketing e um envio por acionamento, conforme confirmação do responsável. Outros diálogos ficam pendentes até edição do vínculo pelo administrador. O canal não é inferido pelo destinatário ou pelo nome do diálogo; só é atribuído por confirmação manual. Ocorrências idênticas no arquivo são preservadas, e a reimportação do histórico não as duplica.
+
+**Custos de diálogos não são somados aos custos das mensagens**, pois os relatórios podem representar os mesmos envios. A IA recebe ambas as apurações estatísticas com essa distinção, sem conteúdo de conversas ou contatos.
+
+O backend acrescenta a coluna billing_category ao histórico e cria dashboard_dialogue_events e dashboard_dialogue_rules no SOURCE_SCHEMA na primeira utilização. É necessário acesso de escrita/DDL pelo pool de importação (SOURCE_WRITE_DATABASE_URL opcional). Não execute os scripts antigos de exclusão para atualizar.
+
+Rotas exclusivas de admin: GET /api/billing, GET e PUT /api/billing/rules, POST /api/billing/dialogues/preview e /commit. A API de mensagens aceita category nas rotas de preview e commit.
