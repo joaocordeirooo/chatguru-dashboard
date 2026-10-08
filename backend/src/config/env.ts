@@ -19,6 +19,10 @@ export const env = z
     OUTGOING_DIRECTION: z.string().default("saida"),
     SENT_STATUSES: z.string().default("enviada"),
     RECEIVED_DIRECTION: z.string().default("entrada"),
+    SOURCE_SCHEMA: z
+      .string()
+      .regex(/^[a-z_][a-z0-9_]*$/)
+      .default("atendimento"),
   })
   .parse(process.env);
 if (!env.DEMO_MODE && (!env.DATABASE_URL || !env.AUTH_DATABASE_URL))

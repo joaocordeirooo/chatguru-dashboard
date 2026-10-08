@@ -567,3 +567,32 @@ footer {
     font-size: 9px;
   }
 }
+
+.extra-filters {
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+.extra-filters label {
+  flex-direction: column;
+  align-items: flex-start;
+}
+.extra-filters input {
+  max-width: 200px;
+}
+.source-note {
+  font-size: 12px;
+  margin-bottom: 20px;
+}
+.breakdowns {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 24px;
+}
+.breakdowns table {
+  min-width: 0;
+}
+@media (max-width: 900px) {
+  .breakdowns {
+    grid-template-columns: 1fr;
+  }
+}

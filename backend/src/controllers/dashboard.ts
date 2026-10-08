@@ -16,6 +16,11 @@ export async function dashboard(req: Request, res: Response) {
       to: date,
       group: z.enum(["employee", "conversation", "client"]).default("employee"),
       page: z.coerce.number().int().min(1).max(10000).default(1),
+      dataSource: z.enum(["history", "workflow"]).default("history"),
+      channel: z.string().trim().max(80).optional(),
+      author: z.string().trim().max(150).optional(),
+      type: z.string().trim().max(50).optional(),
+      status: z.string().trim().max(50).optional(),
     })
     .strict()
     .refine(

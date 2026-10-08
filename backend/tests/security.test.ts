@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import request from "supertest";
 process.env.JWT_SECRET = "test-only-secret-with-at-least-32-characters";
 process.env.DEMO_MODE = "true";
+process.env.NODE_ENV = "test";
+process.env.APP_ORIGIN = "http://localhost:5173";
 const { app } = await import("../src/app.js");
 const origin = "http://localhost:5173";
 test("authentication, ownership and admin boundaries", async () => {
@@ -18,14 +20,11 @@ test("authentication, ownership and admin boundaries", async () => {
   assert.equal((await agent.get("/api/users")).status, 403);
   assert.equal(
     (
-      await agent
-        .post("/api/users")
-        .set("Origin", origin)
-        .send({
-          name: "Teste",
-          email: "test@example.test",
-          password: "password123456",
-        })
+      await agent.post("/api/users").set("Origin", origin).send({
+        name: "Teste",
+        email: "test@example.test",
+        password: "password123456",
+      })
     ).status,
     403,
   );
@@ -56,14 +55,11 @@ test("admin can create, deactivate, and revoke an employee session", async () =>
     .post("/api/auth/login")
     .set("Origin", origin)
     .send({ email: "admin@example.test", password: "DemoAdmin!2026" });
-  const added = await admin
-    .post("/api/users")
-    .set("Origin", origin)
-    .send({
-      name: "Carla Teste",
-      email: "carla@example.test",
-      password: "DemoPassword!2026",
-    });
+  const added = await admin.post("/api/users").set("Origin", origin).send({
+    name: "Carla Teste",
+    email: "carla@example.test",
+    password: "DemoPassword!2026",
+  });
   assert.equal(added.status, 201);
   const employee = request.agent(app);
   assert.equal(

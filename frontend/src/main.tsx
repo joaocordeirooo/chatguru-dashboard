@@ -18,15 +18,30 @@ type User = {
   email: string;
   role: string;
   active: boolean;
+  historical_author?: string | null;
 };
 type Report = {
   demo: boolean;
-  totals: { sent: number; received: number; costMillis: number };
+  dataSource: string;
+  accessNotice: string | null;
+  totals: {
+    sent: number;
+    received: number;
+    costMillis: number;
+    errors: number;
+    records: number;
+    chats: number;
+    employees: number;
+  };
+  types: { type: string; sent: number; errors: number; records: number }[];
+  statuses: { status: string; records: number }[];
   rows: {
     id: string;
     label: string;
     sent: number;
     received: number;
+    errors: number;
+    records: number;
     costMillis: number;
   }[];
   daily: { day: string; sent: number }[];
@@ -56,6 +71,11 @@ function App() {
   const [employees, setEmployees] = useState<User[]>([]);
   const [group, setGroup] = useState("employee");
   const [page, setPage] = useState(1);
+  const [dataSource, setDataSource] = useState("history");
+  const [channel, setChannel] = useState("");
+  const [author, setAuthor] = useState("");
+  const [messageType, setMessageType] = useState("");
+  const [status, setStatus] = useState("");
   const [from, setFrom] = useState(
     new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10),
   );
@@ -75,7 +95,17 @@ function App() {
     setReport(null);
     api(
       "/dashboard?" +
-        new URLSearchParams({ from, to, group, page: String(page) }),
+        new URLSearchParams({
+          from,
+          to,
+          group,
+          page: String(page),
+          dataSource,
+          ...(channel ? { channel } : {}),
+          ...(author ? { author } : {}),
+          ...(messageType ? { type: messageType } : {}),
+          ...(status ? { status } : {}),
+        }),
     )
       .then((r) => {
         if (!ignore) setReport(r);
@@ -89,7 +119,18 @@ function App() {
     return () => {
       ignore = true;
     };
-  }, [user, from, to, group, page]);
+  }, [
+    user,
+    from,
+    to,
+    group,
+    page,
+    dataSource,
+    channel,
+    author,
+    messageType,
+    status,
+  ]);
   async function loadUsers() {
     try {
       setEmployees(await api("/users"));
@@ -307,6 +348,13 @@ function App() {
                   required
                   minLength={12}
                 />
+                <input
+                  aria-label="Autor no CSV"
+                  name="historical_author"
+                  placeholder="Nome exato do autor no CSV"
+                  required
+                  maxLength={150}
+                />
                 <button>Cadastrar funcionário</button>
               </form>
               <div className="panel table-wrap">
@@ -316,6 +364,7 @@ function App() {
                       <th>Funcionário</th>
                       <th>E-mail</th>
                       <th>Status</th>
+                      <th>Autor no CSV</th>
                       <th>Ações</th>
                     </tr>
                   </thead>
@@ -325,6 +374,7 @@ function App() {
                         <td>{u.name}</td>
                         <td>{u.email}</td>
                         <td>{u.active ? "Ativo" : "Desativado"}</td>
+                        <td>{u.historical_author || "Não vinculado"}</td>
                         <td>
                           {u.role === "employee" && (
                             <>
@@ -368,6 +418,29 @@ function App() {
                               >
                                 Redefinir senha
                               </button>
+                              <button
+                                className="small-btn"
+                                onClick={async () => {
+                                  const value = prompt(
+                                    "Nome exato do autor no CSV (vazio para remover vínculo)",
+                                    u.historical_author || "",
+                                  );
+                                  if (value === null) return;
+                                  try {
+                                    await api("/users/" + u.id, {
+                                      method: "PATCH",
+                                      body: JSON.stringify({
+                                        historical_author: value.trim() || null,
+                                      }),
+                                    });
+                                    loadUsers();
+                                  } catch (e) {
+                                    setError((e as Error).message);
+                                  }
+                                }}
+                              >
+                                Vincular autor
+                              </button>
                             </>
                           )}
                         </td>
@@ -407,6 +480,132 @@ function App() {
                 </label>
                 <span className="muted">Horário de Brasília</span>
               </div>
+              <div className="filters extra-filters">
+                <label>
+                  Origem
+                  <select
+                    aria-label="Origem dos dados"
+                    value={dataSource}
+                    onChange={(e) => {
+                      setDataSource(e.target.value);
+                      setPage(1);
+                      setChannel("");
+                      setAuthor("");
+                      setMessageType("");
+                      setStatus("");
+                    }}
+                  >
+                    <option value="history">
+                      Histórico importado do ChatGuru
+                    </option>
+                    <option value="workflow">Mensagens do workflow n8n</option>
+                  </select>
+                </label>
+                <label>
+                  Canal
+                  <input
+                    aria-label="Canal"
+                    value={channel}
+                    placeholder={
+                      dataSource === "history"
+                        ? "2998 ou todos"
+                        : "phone_id ou todos"
+                    }
+                    onChange={(e) => {
+                      setChannel(e.target.value);
+                      setPage(1);
+                    }}
+                  />
+                </label>
+                {user.role === "admin" && (
+                  <label>
+                    Autor
+                    <input
+                      aria-label="Autor"
+                      value={author}
+                      placeholder="Nome exato ou todos"
+                      onChange={(e) => {
+                        setAuthor(e.target.value);
+                        setPage(1);
+                      }}
+                    />
+                  </label>
+                )}
+                <label>
+                  Tipo
+                  <select
+                    aria-label="Tipo de mensagem"
+                    value={messageType}
+                    onChange={(e) => {
+                      setMessageType(e.target.value);
+                      setPage(1);
+                    }}
+                  >
+                    <option value="">Todos</option>
+                    {[
+                      "chat",
+                      "audio",
+                      "image",
+                      "document",
+                      "template",
+                      "video",
+                    ].map((t) => (
+                      <option key={t}>{t}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Status
+                  <select
+                    aria-label="Status das mensagens"
+                    value={status}
+                    onChange={(e) => {
+                      setStatus(e.target.value);
+                      setPage(1);
+                    }}
+                  >
+                    <option value="">Todos</option>
+                    {[
+                      "enviada",
+                      "erro",
+                      ...(dataSource === "workflow"
+                        ? [
+                            "recebida",
+                            "processada",
+                            "em_processamento",
+                            "pendente_envio",
+                            "envio_incerto",
+                          ]
+                        : []),
+                    ].map((t) => (
+                      <option key={t}>{t}</option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  className="small-btn"
+                  onClick={() => {
+                    setFrom("2026-10-01");
+                    setTo("2026-10-07");
+                    setDataSource("history");
+                    setChannel("2998");
+                    setAuthor("");
+                    setMessageType("");
+                    setStatus("");
+                    setPage(1);
+                  }}
+                >
+                  Relatório 2998 · 01 a 07/10/2026
+                </button>
+              </div>
+              {report?.accessNotice && (
+                <p className="error">{report.accessNotice}</p>
+              )}
+              <p className="source-note">
+                {dataSource === "history"
+                  ? "Histórico de mensagens de saída. O CSV não informa mensagens recebidas. Clientes são agrupados por canal e chat; nomes não identificam uma pessoa de forma única."
+                  : "Eventos do n8n. Responsável atual da conversa; anotações internas não contam como envios."}
+              </p>
               <div className="cards">
                 {[
                   {
@@ -416,10 +615,19 @@ function App() {
                     detail: "Envios contabilizados no período",
                   },
                   {
-                    label: "Mensagens recebidas",
-                    value: report?.totals.received.toLocaleString("pt-BR"),
+                    label:
+                      dataSource === "history"
+                        ? "Envios com erro"
+                        : "Mensagens recebidas",
+                    value: (dataSource === "history"
+                      ? report?.totals.errors
+                      : report?.totals.received
+                    )?.toLocaleString("pt-BR"),
                     icon: <ArrowDownLeft />,
-                    detail: "Entradas sem cobrança de envio",
+                    detail:
+                      dataSource === "history"
+                        ? "Excluídos do custo estimado"
+                        : "Entradas sem cobrança de envio",
                   },
                   {
                     label: "Custo estimado",
@@ -428,6 +636,24 @@ function App() {
                       : undefined,
                     icon: <Wallet />,
                     detail: "Mensagens enviadas × R$ 0,035",
+                  },
+                  {
+                    label: "Registros no período",
+                    value: report?.totals.records.toLocaleString("pt-BR"),
+                    icon: <MessagesSquare />,
+                    detail: "Todos os status selecionados",
+                  },
+                  {
+                    label: "Chats com envio",
+                    value: report?.totals.chats.toLocaleString("pt-BR"),
+                    icon: <MessagesSquare />,
+                    detail: "Chats distintos; não atendimentos concluídos",
+                  },
+                  {
+                    label: "Autores com envio",
+                    value: report?.totals.employees.toLocaleString("pt-BR"),
+                    icon: <Users />,
+                    detail: "Autoria dos envios contabilizados",
                   },
                 ].map((c) => (
                   <article key={c.label}>
@@ -472,6 +698,79 @@ function App() {
                   )}
                 </div>
               </div>
+              <div className="breakdowns">
+                <div className="panel table-wrap">
+                  <div className="panel-title">
+                    <h2>Mensagens por tipo</h2>
+                  </div>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Tipo</th>
+                        <th>Registros</th>
+                        <th>Enviadas</th>
+                        <th>Erros</th>
+                        <th>Custo</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {report?.types.map((t) => (
+                        <tr key={t.type}>
+                          <td>{t.type}</td>
+                          <td>{t.records}</td>
+                          <td>{t.sent}</td>
+                          <td>{t.errors}</td>
+                          <td>{currency(t.sent * 35)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="panel table-wrap">
+                  <div className="panel-title">
+                    <h2>Status dos registros</h2>
+                  </div>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Status</th>
+                        <th>Quantidade</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {report?.statuses.map((s) => (
+                        <tr key={s.status}>
+                          <td>{s.status}</td>
+                          <td>{s.records}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div className="panel table-wrap">
+                <div className="panel-title">
+                  <h2>Envios por dia</h2>
+                </div>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Dia</th>
+                      <th>Enviadas</th>
+                      <th>Custo estimado</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {report?.daily.map((d) => (
+                      <tr key={d.day}>
+                        <td>{d.day.split("-").reverse().join("/")}</td>
+                        <td>{d.sent}</td>
+                        <td>{currency(d.sent * 35)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
               <div className="panel table-wrap">
                 <div className="panel-title">
                   <div>
@@ -508,7 +807,9 @@ function App() {
                             ? "Cliente"
                             : "Atendimento"}
                       </th>
-                      <th>Recebidas</th>
+                      <th>
+                        {dataSource === "history" ? "Erros" : "Recebidas"}
+                      </th>
                       <th>Enviadas</th>
                       <th>Custo estimado</th>
                     </tr>
@@ -522,7 +823,12 @@ function App() {
                           </span>
                           {r.label}
                         </td>
-                        <td>{r.received.toLocaleString("pt-BR")}</td>
+                        <td>
+                          {(dataSource === "history"
+                            ? r.errors
+                            : r.received
+                          ).toLocaleString("pt-BR")}
+                        </td>
                         <td>{r.sent.toLocaleString("pt-BR")}</td>
                         <td>
                           <strong>{currency(r.costMillis)}</strong>

@@ -35,14 +35,12 @@ app.use(
     _next: express.NextFunction,
   ) => {
     if (error instanceof ZodError)
-      return res
-        .status(400)
-        .json({
-          error: "Dados inválidos",
-          fields: error.issues.map((i) => i.path.join(".")),
-        });
+      return res.status(400).json({
+        error: "Dados inválidos",
+        fields: error.issues.map((i) => i.path.join(".")),
+      });
     if (error.code === "23505")
-      return res.status(409).json({ error: "E-mail já cadastrado" });
+      return res.status(409).json({ error: "E-mail ou autor já vinculado" });
     const status = error.status || 500;
     res
       .status(status)

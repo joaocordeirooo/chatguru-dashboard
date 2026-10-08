@@ -24,7 +24,7 @@ DEMO_MODE=true nunca lê os registros reais, mesmo com uma URL configurada. Cada
 
 ## PostgreSQL existente
 
-As tabelas public.contatos, public.conversas e public.mensagens são lidas sem migrações nem alterações. O pool força transações somente leitura. Recomenda-se uma conta com SELECT apenas nessas tabelas. Configure DATABASE_URL **somente no ambiente do backend**, e AUTH_DATABASE_URL para um banco separado de autenticação. O host interno do EasyPanel funciona somente na rede da VPS. Senha/URL mascarada na imagem não são credenciais utilizáveis.
+As tabelas atendimento.contatos, atendimento.conversas e atendimento.mensagens são lidas sem migrações nem alterações. O pool força transações somente leitura. Recomenda-se uma conta com SELECT apenas nessas tabelas. Configure DATABASE_URL **somente no ambiente do backend**, e AUTH_DATABASE_URL para um banco separado de autenticação. O host interno do EasyPanel funciona somente na rede da VPS. Senha/URL mascarada na imagem não são credenciais utilizáveis.
 
 Configure DEMO_MODE=false, OUTGOING_DIRECTION, SENT_STATUSES (lista separada por vírgulas) e RECEIVED_DIRECTION de acordo com os valores reais do n8n. Valores confirmados pelo workflow: saida, enviada, entrada. Apenas saida/enviada conta custo; pendente_envio, envio_incerto, erro e scheduled ficam fora. Cada linha elegível de mensagens conta um envio; confirme que o n8n não grava duplicatas. id_mensagem_origem não foi presumido único sem evidência. Histórico usa o responsável atual da conversa, não necessariamente o funcionário que enviou na época. Para atribuição histórica precisa, o n8n terá de registrar o autor em cada envio.
 
@@ -60,3 +60,15 @@ Para um teste Docker local: defina APP_ORIGIN=http://localhost:8080 e NODE_ENV=d
 ## Validação
 
 npm run build e npm test verificam compilação e limites de autenticação, acesso de funcionário, cálculo, cadastro admin, origem e revogação. A conexão real e o deploy dependem das credenciais da VPS. A API não envia mensagens nem modifica o workflow n8n.
+
+## Histórico importado e painel gerencial
+
+A API /api/dashboard aceita dataSource=history (padrão) ou workflow, além de channel, author, type e status. O histórico usa atendimento.historico_chatguru; o workflow usa o schema configurado em SOURCE_SCHEMA, padrão atendimento. As duas origens não são somadas: o CSV não traz IDs únicos suficientes para reconciliar envios entre fontes.
+
+O dashboard exibe registros, envios, erros, chats com envio, autores com envio, custo estimado, totais diários e distribuições por tipo/status. O botão “Relatório 2998 · 01 a 07/10/2026” aplica o filtro do primeiro lote. O CSV contém somente saídas, por isso não representa mensagens recebidas. Todas as consultas de um relatório usam uma transação somente leitura com snapshot consistente. Página vazia preserva o total de grupos.
+
+Execute backend/sql/002_history.sql no banco de dados de origem antes de usar os novos relatórios. A extensão não destrutiva adiciona canal/status/criado_em_origem e corrige a view para excluir erros históricos. A coluna historical_author em public.dashboard_users é criada no mesmo banco; caso AUTH_DATABASE_URL aponte para outro banco, crie a coluna e índice nesse banco também. O admin vincula cada funcionário ao nome exato do autor no CSV pelo cadastro ou botão “Vincular autor”. Funcionário sem vínculo não recebe histórico, e não pode ampliar acesso por filtros. No workflow permanece o filtro por e-mail do responsável atual da conversa.
+
+A carga personalizada do CSV e o script destrutivo de substituição são entregues separadamente, fora do repositório público. Não existem dados de clientes, credenciais de administrador ou chaves de arquivamento neste repositório. Faça backup antes de qualquer limpeza. O script de substituição recria o primeiro admin; não requer migrate após sua conclusão. Textos, telefones e links da carga são armazenados criptografados e não consultados pela API.
+
+Os testes incluem consultas executadas em PostgreSQL embarcado com dados fictícios: limites de datas no fuso de Brasília, exclusão de erros do custo, isolamento por autor, tentativas de filtros maliciosos, paginação e separação do histórico/workflow.
