@@ -20,6 +20,7 @@ test("authentication, ownership and admin boundaries", async () => {
   assert.equal((await agent.get("/api/users")).status, 403);
   assert.equal((await agent.get("/api/intelligence/metrics")).status, 403);
   assert.equal((await agent.get("/api/billing")).status, 403);
+  assert.equal((await agent.post("/api/billing/calculate").set("Origin", origin).send({})).status, 403);
   assert.equal(
     (await agent.put("/api/billing/rules").set("Origin", origin).send({}))
       .status,
@@ -91,6 +92,16 @@ test("admin can create, deactivate, and revoke an employee session", async () =>
     .post("/api/auth/login")
     .set("Origin", origin)
     .send({ email: "admin@example.test", password: "DemoAdmin!2026" });
+  assert.equal((await admin.post("/api/billing/calculate").set("Origin", origin).send({})).status, 400);
+  const calculation = await admin.post("/api/billing/calculate").set("Origin", origin).send({
+    from: "2026-10-05", to: "2026-10-08", exchangeRate: 5.45, gupshupCapUsd: 75,
+    previousFlow: 0, startingBalanceUsd: 320, endingBalanceUsd: 260.693246,
+    channels: [{ channel: "2998", marketing: 0, utility: 0, authentication: 0, service: 100,
+      received: 100, previousService: 1000 }],
+  });
+  assert.equal(calculation.status, 200);
+  assert.equal(calculation.body.totalUsd, 0.88);
+  assert.equal(calculation.body.consumedUsd, 59.306754);
   const added = await admin.post("/api/users").set("Origin", origin).send({
     name: "Carla Teste",
     email: "carla@example.test",

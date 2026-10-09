@@ -27,6 +27,7 @@ routes.get("/users", admin, users.list);
 routes.post("/users", admin, users.create);
 routes.patch("/users/:id", admin, users.update);
 routes.get("/billing", admin, billing.overview);
+routes.post("/billing/calculate", admin, billing.calculate);
 routes.get("/billing/rules", admin, billing.rules);
 routes.put("/billing/rules", admin, billing.rule);
 const billingLimit = rateLimit({

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Upload, Wallet, CheckCircle2 } from "lucide-react";
+import { CostCalculator } from "./CostCalculator";
 type Api = (path: string, options?: RequestInit) => Promise<any>;
 const money = (v: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
@@ -93,10 +94,10 @@ export function Billing({
         <div className="intelligence-heading">
           <Wallet size={23} />
           <div>
-            <h2>Tarifas por categoria · BRL</h2>
+            <h2>Referências anteriores por categoria · BRL</h2>
             <p>
-              A tarifa é aplicada à categoria confirmada, independentemente de
-              texto, áudio ou template.
+              Valores anteriores usados nos cartões do histórico. Para simular
+              tarifas em dólares, franquias e taxa Gupshup, use a calculadora abaixo.
             </p>
           </div>
         </div>
@@ -238,10 +239,11 @@ export function Billing({
           </select>
         </label>
       </div>
+      <CostCalculator key={`${from}:${to}:${channel}`} api={api} from={from} to={to} channel={channel} />
       {data && (
         <>
           <div className="panel">
-            <h2>CSV de mensagens · custo por categoria</h2>
+            <h2>CSV de mensagens · referência provisória por categoria</h2>
             <p>
               Envios confirmados no histórico: {data.messages.totals.sent}.
               Custo estimado parcial:{" "}
@@ -278,6 +280,9 @@ export function Billing({
                 </tbody>
               </table>
             </div>
+            <p className="fine-print">
+              Esta referência antiga não inclui taxa Gupshup, franquia mensal ou conversão em dólares. Para conciliar créditos, use a calculadora acima.
+            </p>
             <p className="fine-print">
               Para classificar mensagens, use “IA e importações” e escolha a
               categoria somente quando todo o CSV pertencer a ela. Reenvie o

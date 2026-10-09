@@ -11,6 +11,10 @@ import {
   listRules,
 } from "../services/dialogues.js";
 import { fail } from "../services/errors.js";
+import { calculateBilling, calculatorInput } from "../services/calculator.js";
+export function calculate(req: Request, res: Response) {
+  res.json(calculateBilling(calculatorInput.parse(req.body)));
+}
 function file(req: Request) {
   if (!Buffer.isBuffer(req.body) || !req.body.length)
     fail(400, "Envie text/csv.");

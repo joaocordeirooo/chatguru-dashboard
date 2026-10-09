@@ -751,3 +751,9 @@ footer {
 .rule-form button + button {
   margin-left: 10px;
 }
+.cost-calculator fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.cost-calculator legend { font-weight: 600; margin-top: 18px; }
+.calculator-channel { border-bottom: 1px solid #e4e7ec; padding-bottom: 18px; margin-bottom: 18px; }
+.calculator-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 16px; margin: 16px 0; }
+.calculator-fields label { display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+.calculator-fields input { width: 100%; }
