@@ -103,3 +103,12 @@ O CSV de Diálogos Executados tem importação separada, com verificação e con
 O backend acrescenta a coluna billing_category ao histórico e cria dashboard_dialogue_events e dashboard_dialogue_rules no SOURCE_SCHEMA na primeira utilização. É necessário acesso de escrita/DDL pelo pool de importação (SOURCE_WRITE_DATABASE_URL opcional). Não execute os scripts antigos de exclusão para atualizar.
 
 Rotas exclusivas de admin: GET /api/billing, GET e PUT /api/billing/rules, POST /api/billing/dialogues/preview e /commit. A API de mensagens aceita category nas rotas de preview e commit.
+
+
+## Atualização do dashboard
+
+Os indicadores são calculados em uma única consulta PostgreSQL, com um snapshot consistente e sem nove viagens sequenciais pela rede. O resultado inclui totais, grupos paginados, dias, tipos, status e categorias, respeitando os filtros e a autorização do usuário.
+
+Enquanto o dashboard estiver visível, ele consulta os dados novamente com intervalo de 15 segundos após cada resposta. Também atualiza ao voltar à aba e oferece Atualizar agora. Consultas não se sobrepõem; trocar filtros cancela a requisição anterior. O último resultado do mesmo filtro permanece visível durante atualizações. O cache fica apenas em memória, separado por usuário e filtros, e é apagado ao sair. Não armazena indicadores no armazenamento persistente do navegador.
+
+Eventos do n8n aparecem depois de gravados no banco. O histórico CSV continua dependendo da importação: atualizar a tela não busca novos relatórios diretamente no ChatGuru. A latência do túnel SSH ainda afeta testes locais; hospedar a API junto ao banco evita essa viagem pela internet.

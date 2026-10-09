@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import {
   LayoutDashboard,
@@ -104,6 +104,10 @@ function App() {
   );
   const [to, setTo] = useState(new Date().toISOString().slice(0, 10));
   const [busy, setBusy] = useState(false);
+  const [updatedAt, setUpdatedAt] = useState<number | null>(null);
+  const reportCache = useRef(
+    new Map<string, { report: Report; updated: number }>(),
+  );
   useEffect(() => {
     api("/auth/me")
       .then(setUser)
@@ -111,39 +115,77 @@ function App() {
       .finally(() => setReady(true));
   }, []);
   useEffect(() => {
-    if (!user) return;
-    let ignore = false;
-    setBusy(true);
-    setError("");
-    setReport(null);
-    api(
-      "/dashboard?" +
-        new URLSearchParams({
-          from,
-          to,
-          group,
-          page: String(page),
-          dataSource,
-          ...(channel ? { channel } : {}),
-          ...(author ? { author } : {}),
-          ...(messageType ? { type: messageType } : {}),
-          ...(status ? { status } : {}),
-        }),
-    )
-      .then((r) => {
-        if (!ignore) setReport(r);
-      })
-      .catch((e) => {
-        if (!ignore) setError(e.message);
-      })
-      .finally(() => {
-        if (!ignore) setBusy(false);
-      });
+    if (!user) {
+      reportCache.current.clear();
+      return;
+    }
+    if (view !== "dashboard") return;
+    const query = new URLSearchParams({
+      from,
+      to,
+      group,
+      page: String(page),
+      dataSource,
+      ...(channel ? { channel } : {}),
+      ...(author ? { author } : {}),
+      ...(messageType ? { type: messageType } : {}),
+      ...(status ? { status } : {}),
+    });
+    const key = JSON.stringify([
+      user.id,
+      user.role,
+      user.historical_author,
+      query.toString(),
+    ]);
+    const cached = reportCache.current.get(key);
+    setReport(cached?.report ?? null);
+    setUpdatedAt(cached?.updated ?? null);
+    let disposed = false,
+      inFlight = false;
+    let controller: AbortController | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    async function refresh() {
+      if (disposed || inFlight || document.visibilityState === "hidden") return;
+      if (timer) clearTimeout(timer);
+      inFlight = true;
+      controller = new AbortController();
+      setBusy(true);
+      try {
+        const r = await api("/dashboard?" + query, {
+          signal: controller.signal,
+        });
+        if (disposed) return;
+        const updated = Date.now();
+        if (reportCache.current.size >= 20) reportCache.current.clear();
+        reportCache.current.set(key, { report: r, updated });
+        setReport(r);
+        setUpdatedAt(updated);
+        setError("");
+      } catch (e) {
+        if (!disposed && (e as Error).name !== "AbortError")
+          setError((e as Error).message);
+      } finally {
+        inFlight = false;
+        if (!disposed) {
+          setBusy(false);
+          timer = setTimeout(refresh, 15000);
+        }
+      }
+    }
+    const visible = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    document.addEventListener("visibilitychange", visible);
+    void refresh();
     return () => {
-      ignore = true;
+      disposed = true;
+      controller?.abort();
+      if (timer) clearTimeout(timer);
+      document.removeEventListener("visibilitychange", visible);
     };
   }, [
     user,
+    view,
     from,
     to,
     group,
@@ -661,6 +703,28 @@ function App() {
                   Relatório 2998 · 01 a 07/10/2026
                 </button>
               </div>
+              <p className="source-note" aria-live="polite">
+                {busy
+                  ? report
+                    ? "Atualizando indicadores…"
+                    : "Carregando indicadores…"
+                  : updatedAt
+                    ? "Atualizado às " +
+                      new Date(updatedAt).toLocaleTimeString("pt-BR", {
+                        timeZone: "America/Sao_Paulo",
+                      })
+                    : ""}
+                {
+                  " · Atualização automática a cada 15 segundos com esta aba visível. "
+                }
+                <button
+                  className="small-btn"
+                  disabled={busy}
+                  onClick={() => setRevision((n) => n + 1)}
+                >
+                  Atualizar agora
+                </button>
+              </p>
               {report?.accessNotice && (
                 <p className="error">{report.accessNotice}</p>
               )}

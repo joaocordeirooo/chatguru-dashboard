@@ -187,58 +187,39 @@ export async function report(user: User, f: Filters) {
           : "'Chat #'||conversation";
   const db = await source!.connect();
   try {
-    await db.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
-    const totals = (
+    // One SQL statement gives every aggregate the same snapshot without network round trips.
+    const result = (
       await db.query(
-        base +
-          ` SELECT ${counts},COUNT(DISTINCT conversation) FILTER(WHERE direction=$9 AND status=ANY($10::text[]))::int AS chats,COUNT(DISTINCT employee_id) FILTER(WHERE direction=$9 AND status=ANY($10::text[]))::int AS employees FROM filtered`,
-        params,
+        base.replace("filtered AS (", "filtered AS MATERIALIZED (") +
+          `
+      , grouped AS (SELECT ${group} AS id,MAX(${label}) AS label,${counts} FROM filtered GROUP BY 1),
+      paged AS (SELECT * FROM grouped ORDER BY sent DESC,id NULLS LAST LIMIT 20 OFFSET $12),
+      daily AS (SELECT (occurred_at AT TIME ZONE 'America/Sao_Paulo')::date::text AS day,${counts} FROM filtered GROUP BY 1),
+      types AS (SELECT type,${counts} FROM filtered GROUP BY 1),
+      statuses AS (SELECT status,COUNT(*)::int AS records FROM filtered GROUP BY 1),
+      categories AS (SELECT billing_category AS category,${counts} FROM filtered GROUP BY 1),
+      totals AS (SELECT ${counts},COUNT(DISTINCT conversation) FILTER(WHERE direction=$9 AND status=ANY($10::text[]))::int AS chats,COUNT(DISTINCT employee_id) FILTER(WHERE direction=$9 AND status=ANY($10::text[]))::int AS employees FROM filtered)
+      SELECT (SELECT row_to_json(t) FROM totals t) AS totals,
+      COALESCE((SELECT json_agg(g ORDER BY sent DESC,id NULLS LAST) FROM paged g),'[]'::json) AS groups,
+      COALESCE((SELECT json_agg(d ORDER BY day) FROM daily d),'[]'::json) AS daily,
+      COALESCE((SELECT json_agg(t ORDER BY sent DESC,type) FROM types t),'[]'::json) AS types,
+      COALESCE((SELECT json_agg(s ORDER BY records DESC,status) FROM statuses s),'[]'::json) AS statuses,
+      COALESCE((SELECT json_agg(c ORDER BY category) FROM categories c),'[]'::json) AS categories,
+      (SELECT COUNT(*)::int FROM grouped) AS total`,
+        [...params, (f.page - 1) * 20],
       )
     ).rows[0];
-    const groups = await db.query(
-      base +
-        ` SELECT ${group} AS id,MAX(${label}) AS label,${counts} FROM filtered GROUP BY 1 ORDER BY sent DESC,id NULLS LAST LIMIT 20 OFFSET $12`,
-      [...params, (f.page - 1) * 20],
-    );
-    const daily = await db.query(
-      base +
-        ` SELECT (occurred_at AT TIME ZONE 'America/Sao_Paulo')::date::text AS day,${counts} FROM filtered GROUP BY 1 ORDER BY 1`,
-      params,
-    );
-    const types = await db.query(
-      base +
-        ` SELECT type,${counts} FROM filtered GROUP BY 1 ORDER BY sent DESC,type`,
-      params,
-    );
-    const statuses = await db.query(
-      base +
-        ` SELECT status,${counts} FROM filtered GROUP BY 1 ORDER BY records DESC,status`,
-      params,
-    );
-    const total = (
-      await db.query(
-        base +
-          ` SELECT COUNT(DISTINCT ${group})::int + CASE WHEN COUNT(*) FILTER(WHERE ${group} IS NULL)>0 THEN 1 ELSE 0 END AS total,${counts} FROM filtered`,
-        params,
-      )
-    ).rows[0].total;
-    const categories = await db.query(
-      base +
-        ` SELECT billing_category AS category,${counts} FROM filtered GROUP BY 1 ORDER BY 1`,
-      params,
-    );
-    await db.query("COMMIT");
     return {
       demo: false,
       dataSource: f.dataSource ?? "history",
       pricing,
-      totals: priced(totals),
-      categories: categories.rows.map(priced),
-      daily: daily.rows.map(priced),
-      types: types.rows.map(priced),
-      statuses: statuses.rows,
-      rows: groups.rows.map(priced),
-      total,
+      totals: priced(result.totals),
+      categories: result.categories.map(priced),
+      daily: result.daily.map(priced),
+      types: result.types.map(priced),
+      statuses: result.statuses,
+      rows: result.groups.map(priced),
+      total: result.total,
       page: f.page,
       accessNotice:
         user.role !== "admin" &&
@@ -247,9 +228,6 @@ export async function report(user: User, f: Filters) {
           ? "Seu administrador precisa vincular seu usuário ao autor do relatório ChatGuru."
           : null,
     };
-  } catch (error) {
-    await db.query("ROLLBACK");
-    throw error;
   } finally {
     db.release();
   }

@@ -30,8 +30,12 @@ test("PostgreSQL reports: status, period boundaries, author isolation, grouping 
  INSERT INTO atendimento.contatos VALUES(1,'Cliente','');
  INSERT INTO atendimento.conversas VALUES(1,1,'Equipe','equipe@example.test','phone1','chat1');
  INSERT INTO atendimento.mensagens VALUES(1,1,NULL,'2026-10-07 12:00:00-03','chat','enviada','saida'),(2,1,NULL,'2026-10-07 12:00:00-03','chat','processada','entrada'),(3,1,NULL,'2026-10-07 12:00:00-03','chat','envio_incerto','saida');`);
+  let queryCount = 0;
   (source as any).connect = async () => ({
-    query: (sql: string, p: any[]) => db.query(sql, p),
+    query: (sql: string, p: any[]) => {
+      queryCount++;
+      return db.query(sql, p);
+    },
     release: () => {},
   });
   const admin = {
@@ -58,6 +62,11 @@ test("PostgreSQL reports: status, period boundaries, author isolation, grouping 
     channel: "2998",
   };
   const result = await report(admin, f);
+  assert.equal(
+    queryCount,
+    1,
+    "all dashboard aggregates use one database round trip",
+  );
   assert.equal(result.totals.records, 4);
   assert.equal(result.totals.sent, 3);
   assert.equal(result.totals.errors, 1);
