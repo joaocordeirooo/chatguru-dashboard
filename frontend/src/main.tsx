@@ -10,10 +10,12 @@ import {
   Wallet,
   ChevronRight,
   ShieldCheck,
+  Kanban,
 } from "lucide-react";
 import "./style.css";
 import { Intelligence } from "./Intelligence";
 import { Billing } from "./Billing";
+import { Crm } from "./crm/Crm";
 type User = {
   id: string;
   name: string;
@@ -314,6 +316,7 @@ function App() {
             Categorias e custos
           </button>
         )}
+        <button className={view === "crm" ? "nav active" : "nav"} onClick={() => { setError(""); setView("crm"); }}><Kanban size={19} />CRM · Funil de vendas</button>
         <div className="side-bottom">
           <ShieldCheck size={20} />
           <p>
@@ -352,7 +355,7 @@ function App() {
         <header>
           <div className="breadcrumb">
             Workspace <ChevronRight size={14} />{" "}
-            {view === "dashboard"
+            {view === "crm" ? "CRM · Funil de vendas" : view === "dashboard"
               ? "Visão geral"
               : view === "intelligence"
                 ? "IA e importações"
@@ -371,7 +374,7 @@ function App() {
                 DARCÍSIO MÜLLER · ADVOGADOS ASSOCIADOS
               </span>
               <h1>
-                {view === "dashboard"
+                {view === "crm" ? "CRM · Funil de vendas" : view === "dashboard"
                   ? "Visão geral das mensagens"
                   : view === "intelligence"
                     ? "Inteligência gerencial"
@@ -380,7 +383,7 @@ function App() {
                       : "Gestão de funcionários"}
               </h1>
               <p>
-                {view === "dashboard"
+                {view === "crm" ? "Organize suas pastas, documentos e tarefas até a assinatura." : view === "dashboard"
                   ? "Clareza sobre seus atendimentos. Controle sobre cada envio."
                   : view === "intelligence"
                     ? "Seus dois números, um panorama completo das mensagens."
@@ -389,19 +392,19 @@ function App() {
                       : "Cadastre a equipe e controle os acessos ao painel."}
               </p>
             </div>
-            <span className="tariff">
+            {view !== "crm" && <span className="tariff">
               Marketing · tarifa informada
               <strong>
                 R$ 0,3217 <small>/ mensagem</small>
               </strong>
-            </span>
+            </span>}
           </div>
           {error && (
             <p role="alert" className="error">
               {error}
             </p>
           )}
-          {view === "billing" && user.role === "admin" ? (
+          {view === "crm" ? <Crm actor={user} /> : view === "billing" && user.role === "admin" ? (
             <Billing api={api} onChanged={() => setRevision((n) => n + 1)} />
           ) : view === "intelligence" && user.role === "admin" ? (
             <Intelligence

@@ -8,6 +8,7 @@ import { publicUser } from "../services/users.js";
 import express from "express";
 import * as intelligence from "../controllers/intelligence.js";
 import * as billing from "../controllers/billing.js";
+import { crmRoutes } from "./crm.js";
 export const routes = Router();
 routes.post(
   "/auth/login",
@@ -23,6 +24,7 @@ routes.post("/auth/logout", logout);
 routes.use(authenticate);
 routes.get("/auth/me", (req, res) => res.json(publicUser(req.user)));
 routes.get("/dashboard", dashboard);
+routes.use("/crm", crmRoutes);
 routes.get("/users", admin, users.list);
 routes.post("/users", admin, users.create);
 routes.patch("/users/:id", admin, users.update);
